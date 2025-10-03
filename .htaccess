@@ -1,0 +1,9 @@
+<IfModule mod_headers.c>
+    Header set X-Robots-Tag "noindex, nofollow"
+</IfModule>
+
+<IfModule mod_rewrite.c>
+    RewriteEngine On
+    RewriteCond %{HTTP_USER_AGENT} (googlebot|bingbot|Slurp|DuckDuckBot|Baiduspider|YandexBot|Sogou|ia_archiver) [NC]
+    RewriteRule .* - [R=403,L]
+</IfModule>
