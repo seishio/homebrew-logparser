@@ -250,6 +250,51 @@ detect_architecture() {
     esac
 }
 
+# Install dependencies function
+install_deps() {
+    local system_type="$1"
+    case "$system_type" in
+        "ubuntu"|"debian"|"mint"|"pop")
+            sudo apt-get install -y libgtk-3-0 libnotify4 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri
+            ;;
+        "fedora"|"centos"|"rhel"|"rpm")
+            sudo dnf install -y gtk3 libnotify mesa-libEGL libxcb libX11 libXext libXrender mesa-libGL libfuse2 || sudo yum install -y gtk3 libnotify mesa-libEGL libxcb libX11 libXext libXrender mesa-libGL fuse
+            ;;
+        "arch"|"manjaro")
+            sudo pacman -S --noconfirm gtk3 libnotify mesa libxcb libx11 libxext libxrender fuse2
+            ;;
+        "suse")
+            sudo zypper install -y gtk3 libnotify Mesa libxcb libX11 libXext libXrender fuse
+            ;;
+        "alpine")
+            sudo apk add --no-cache gtk+3.0 libnotify mesa-egl libxcb libx11 libxext libxrender mesa-gl fuse
+            ;;
+        *)
+            sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri
+            ;;
+    esac
+}
+
+# Ask user about dependencies
+ask_install_deps() {
+    local system_type="$1"
+    echo "Install dependencies? [y/N]: "
+    read -p "Choice: " choice
+    case $choice in
+        [yY]|[yY][eE][sS])
+            log "Installing dependencies..."
+            if install_deps "$system_type"; then
+                success "Dependencies installed!"
+            else
+                warning "Some deps failed - LogParser may not work correctly"
+            fi
+            ;;
+        *)
+            warning "Skipping dependencies - LogParser may not work correctly"
+            ;;
+    esac
+}
+
 ARCHITECTURE=$(detect_architecture)
 log "Detected architecture: $ARCHITECTURE"
 
@@ -265,21 +310,28 @@ case "$SYSTEM_TYPE" in
         
         log "Installing package..."
         
-        # Install all required dependencies
+        # Try to install dependencies with graceful fallback
         log "Installing system dependencies..."
-        sudo apt-get update
-        sudo apt-get install -y libgtk-3-0 libnotify4 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri
+        if ! sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnotify4 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri; then
+            warning "Could not install all dependencies automatically"
+            warning "LogParser will be installed but may not work correctly"
+        fi
         
         # Install package with dependency resolution
         if ! sudo dpkg -i "$FILE"; then
             log "Resolving dependencies..."
-            sudo apt-get -f install -y
-            log "Retrying package installation..."
-            sudo dpkg -i "$FILE"
+            if ! sudo apt-get -f install -y; then
+                warning "Could not resolve dependencies automatically"
+                warning "LogParser will be installed but may not work correctly"
+            else
+                log "Retrying package installation..."
+                sudo dpkg -i "$FILE"
+            fi
         fi
         
         if command -v logparser >/dev/null 2>&1; then
             success "LogParser installed successfully!"
+            ask_install_deps "$SYSTEM_TYPE"
             log "Run: logparser"
         else
             error "Installation failed"
@@ -295,10 +347,12 @@ case "$SYSTEM_TYPE" in
         
         chmod +x "$FILE"
         
-        # Install dependencies
+        # Try to install dependencies with graceful fallback
         log "Installing system dependencies..."
-        sudo apt-get update
-        sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri
+        if ! sudo apt-get update && sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri; then
+            warning "Could not install all dependencies automatically"
+            warning "LogParser will be installed but may not work correctly"
+        fi
         
         # Install AppImage
         INSTALL_DIR="$HOME/.local/bin"
@@ -307,6 +361,7 @@ case "$SYSTEM_TYPE" in
         chmod +x "$INSTALL_DIR/logparser"
         
         success "LogParser installed to $INSTALL_DIR/logparser"
+        ask_install_deps "$SYSTEM_TYPE"
         log "Run: logparser"
     fi
     ;;
@@ -320,33 +375,12 @@ case "$SYSTEM_TYPE" in
     
     chmod +x "$FILE"
     
-    # Install dependencies based on system
+    # Try to install dependencies with graceful fallback
     log "Installing system dependencies..."
-    case "$SYSTEM_TYPE" in
-        "fedora"|"centos"|"rhel"|"rpm")
-            if command -v dnf >/dev/null 2>&1; then
-                sudo dnf install -y gtk3 libnotify mesa-libEGL libxcb libX11 libXext libXrender mesa-libGL libfuse2
-            elif command -v yum >/dev/null 2>&1; then
-                sudo yum install -y gtk3 libnotify mesa-libEGL libxcb libX11 libXext libXrender mesa-libGL fuse
-            fi
-            ;;
-        "arch"|"manjaro")
-            sudo pacman -S --noconfirm gtk3 libnotify mesa libxcb libx11 libxext libxrender fuse2
-            ;;
-        "suse")
-            sudo zypper install -y gtk3 libnotify Mesa libxcb libX11 libXext libXrender fuse
-            ;;
-        "alpine")
-            sudo apk add --no-cache gtk+3.0 libnotify mesa-egl libxcb libx11 libxext libxrender mesa-gl fuse
-            ;;
-        *)
-            # Generic Linux - try to install common dependencies
-            if command -v apt-get >/dev/null 2>&1; then
-                sudo apt-get update
-                sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri
-            fi
-            ;;
-    esac
+    if ! install_deps "$SYSTEM_TYPE"; then
+        warning "Could not install all dependencies automatically"
+        warning "LogParser will be installed but may not work correctly"
+    fi
     
     # Install AppImage
     INSTALL_DIR="$HOME/.local/bin"
@@ -396,6 +430,7 @@ case "$SYSTEM_TYPE" in
     fi
     
     success "Desktop integration complete"
+    ask_install_deps "$SYSTEM_TYPE"
     log "Run: logparser"
     ;;
 esac
