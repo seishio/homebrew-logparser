@@ -41,6 +41,11 @@ curl -fsSL https://raw.githubusercontent.com/seishio/homebrew-logparser/main/ins
 ```bash
 # Force reinstall with latest formula
 brew reinstall --cask logparser
+
+# If SHA-256 mismatch occurs, update tap first
+brew untap seishio/logparser
+brew tap seishio/logparser
+brew install --cask logparser
 ```
 
 ### Reinstall
@@ -69,13 +74,20 @@ brew install --cask logparser
 ```
 
 ### Troubleshooting
+
+#### SHA-256 Mismatch Error
+```bash
+# Clean cache and reinstall tap
+brew cleanup --prune=all
+brew untap seishio/logparser
+brew tap seishio/logparser
+brew install --cask logparser
+```
+
+#### Cache Issues
 ```bash
 # Reset Homebrew cache
 brew cleanup --prune=all
-
-# Reset Homebrew completely
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
-/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
 ```
 
 ## License
