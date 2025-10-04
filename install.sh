@@ -1,98 +1,13 @@
 #!/bin/bash
 set -euo pipefail
 
-# Script info
-SCRIPT_NAME="LogParser Installer"
-SCRIPT_VERSION="1.0.0"
-
-# Show help
-show_help() {
-    echo "Usage: $0 [VERSION] [OPTIONS]"
-    echo ""
-    echo "Install LogParser on Linux systems"
-    echo ""
-    echo "Arguments:"
-    echo "  VERSION    Specific version to install (e.g., 0.4.30)"
-    echo "             If not provided, installs latest version"
-    echo ""
-    echo "Options:"
-    echo "  -h, --help        Show this help message"
-    echo "  -v, --version     Show script version"
-    echo "  --version         Show LogParser version (if installed)"
-    echo "  uninstall         Uninstall LogParser"
-    echo ""
-    echo "Examples:"
-    echo "  $0                    # Install latest version"
-    echo "  $0 0.4.30           # Install specific version"
-    echo "  $0 uninstall         # Uninstall LogParser"
-    echo ""
-    echo "After installation:"
-    echo "  logparser            # Run LogParser"
-    echo ""
-    echo "Desktop Integration:"
-    echo "  - Creates desktop file in ~/.local/share/applications/"
-    echo "  - Installs icons in ~/.local/share/icons/"
-    echo "  - Updates desktop database and icon cache"
-    echo "  - Appears in application menu"
-}
-
-# Uninstall function
-uninstall_logparser() {
-    log "Uninstalling LogParser..."
-    
-    # Remove AppImage
-    rm -f "$HOME/.local/bin/logparser"
-    
-    # Remove desktop integration
-    rm -f "$HOME/.local/share/applications/logparser.desktop"
-    rm -f "$HOME/.local/share/icons/hicolor/256x256/apps/logparser.png"
-    
-    # Remove application data and caches
-    rm -rf "$HOME/.local/share/LogParser"
-    rm -rf "$HOME/.cache/logparser"
-    rm -rf "$HOME/.config/logparser"
-    
-    # Update desktop database
-    if command -v update-desktop-database >/dev/null 2>&1; then
-        update-desktop-database "$HOME/.local/share/applications" 2>/dev/null || true
-    fi
-    
-    success "LogParser uninstalled successfully"
-}
-
-# Handle command line arguments
-case "${1:-}" in
-    -h|--help)
-        show_help
-        exit 0
-        ;;
-    -v|--version)
-        echo "$SCRIPT_NAME v$SCRIPT_VERSION"
-        exit 0
-        ;;
-    --version)
-        if command -v logparser >/dev/null 2>&1; then
-            logparser --version
-        else
-            error "LogParser is not installed"
-            exit 1
-        fi
-        exit 0
-        ;;
-    uninstall|--uninstall)
-        uninstall_logparser
-        exit 0
-        ;;
-esac
-
-# Colors
+# Colors and logging
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
 
-# Logging functions
 log() { echo -e "${BLUE}==>${NC} $1"; }
 success() { echo -e "${GREEN}✅${NC} $1"; }
 error() { echo -e "${RED}❌${NC} $1" >&2; }
@@ -275,6 +190,31 @@ install_deps() {
     esac
 }
 
+# Get dependency command for manual installation
+get_dependency_command() {
+    local system_type="$1"
+    case "$system_type" in
+        "ubuntu"|"debian"|"mint"|"pop")
+            echo "sudo apt-get install -y libgtk-3-0 libnotify4 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri"
+            ;;
+        "fedora"|"centos"|"rhel"|"rpm")
+            echo "sudo dnf install -y gtk3 libnotify mesa-libEGL libxcb libX11 libXext libXrender mesa-libGL libfuse2"
+            ;;
+        "arch"|"manjaro")
+            echo "sudo pacman -S --noconfirm gtk3 libnotify mesa libxcb libx11 libxext libxrender fuse2"
+            ;;
+        "suse")
+            echo "sudo zypper install -y gtk3 libnotify Mesa libxcb libX11 libXext libXrender fuse"
+            ;;
+        "alpine")
+            echo "sudo apk add --no-cache gtk+3.0 libnotify mesa-egl libxcb libx11 libxext libxrender mesa-gl fuse"
+            ;;
+        *)
+            echo "sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri"
+            ;;
+    esac
+}
+
 # Ask user about dependencies
 ask_install_deps() {
     local system_type="$1"
@@ -310,35 +250,33 @@ case "$SYSTEM_TYPE" in
         
         log "Installing package..."
         
-        # Try to install dependencies with graceful fallback
-        log "Installing system dependencies..."
-        if ! sudo apt-get update && sudo apt-get install -y libgtk-3-0 libnotify4 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri; then
-            warning "Could not install all dependencies automatically"
-            warning "LogParser will be installed but may not work correctly"
-        fi
-        
-        # Install package with dependency resolution
+        # Install package first (without dependencies)
+        log "Installing package..."
         if ! sudo dpkg -i "$FILE"; then
-            log "Resolving dependencies..."
-            if ! sudo apt-get -f install -y; then
-                warning "Could not resolve dependencies automatically"
-                warning "LogParser will be installed but may not work correctly"
-            else
-                log "Retrying package installation..."
-                sudo dpkg -i "$FILE"
-            fi
+            log "Package installed with dependency issues - will resolve later"
         fi
         
         if command -v logparser >/dev/null 2>&1; then
             success "LogParser installed successfully!"
-            ask_install_deps "$SYSTEM_TYPE"
+            echo ""
+            echo "🎉 Installation completed! LogParser is ready to use."
+            echo ""
+            
+            # Install dependencies
+            log "Installing dependencies..."
+            if sudo apt-get update && sudo apt-get install -y libegl1-mesa libxcb-cursor0 libgtk-3-0 libnotify4 libxcb-xinerama0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri; then
+                success "Dependencies installed successfully!"
+            else
+                warning "Some dependencies failed to install"
+                echo "Manual install: $(get_dependency_command "$SYSTEM_TYPE")"
+            fi
             log "Run: logparser"
         else
             error "Installation failed"
             exit 1
         fi
     else
-        # Use AppImage for non-amd64
+        # Non-amd64 architecture - use AppImage with desktop integration
         FILE="LogParser-$VERSION-amd64.AppImage"
         log "Downloading AppImage for $ARCHITECTURE..."
         curl -fsSL -o "$FILE" "$BASE_URL/$FILE"
@@ -347,21 +285,86 @@ case "$SYSTEM_TYPE" in
         
         chmod +x "$FILE"
         
-        # Try to install dependencies with graceful fallback
-        log "Installing system dependencies..."
-        if ! sudo apt-get update && sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri; then
-            warning "Could not install all dependencies automatically"
-            warning "LogParser will be installed but may not work correctly"
-        fi
-        
-        # Install AppImage
+        # Install AppImage with desktop integration
         INSTALL_DIR="$HOME/.local/bin"
         mkdir -p "$INSTALL_DIR"
         mv "$FILE" "$INSTALL_DIR/logparser"
         chmod +x "$INSTALL_DIR/logparser"
         
         success "LogParser installed to $INSTALL_DIR/logparser"
-        ask_install_deps "$SYSTEM_TYPE"
+        
+        # Desktop integration
+        log "Setting up desktop integration..."
+        
+        # Create directories
+        apps_dir="$HOME/.local/share/applications"
+        icons_dir="$HOME/.local/share/icons/hicolor/256x256/apps"
+        mkdir -p "$apps_dir" "$icons_dir"
+        
+        # Create desktop file
+        {
+          echo "[Desktop Entry]"
+          echo "Version=1.0"
+          echo "Type=Application"
+          echo "Name=LogParser"
+          echo "Comment=Log file analyzer"
+          echo "Exec=$INSTALL_DIR/logparser"
+          echo "Icon=logparser"
+          echo "Terminal=false"
+          echo "Categories=Utility;"
+          echo "StartupNotify=true"
+          echo "NoDisplay=false"
+        } > "$apps_dir/logparser.desktop"
+        
+        # Extract original icon from AppImage
+        log "Extracting original icon from AppImage..."
+        if command -v convert >/dev/null 2>&1; then
+            if convert "$INSTALL_DIR/logparser" -resize 256x256 "$icons_dir/logparser.png" 2>/dev/null; then
+                success "Original icon extracted successfully"
+            else
+                log "Could not extract icon, using AppImage as icon"
+                cp "$INSTALL_DIR/logparser" "$icons_dir/logparser.png" 2>/dev/null || true
+            fi
+        elif command -v magick >/dev/null 2>&1; then
+            if magick "$INSTALL_DIR/logparser" -resize 256x256 "$icons_dir/logparser.png" 2>/dev/null; then
+                success "Original icon extracted successfully"
+            else
+                log "Could not extract icon, using AppImage as icon"
+                cp "$INSTALL_DIR/logparser" "$icons_dir/logparser.png" 2>/dev/null || true
+            fi
+        else
+            log "ImageMagick not available, using AppImage as icon"
+            cp "$INSTALL_DIR/logparser" "$icons_dir/logparser.png" 2>/dev/null || true
+        fi
+        
+        # Update desktop database
+        if command -v update-desktop-database >/dev/null 2>&1; then
+            update-desktop-database "$apps_dir" 2>/dev/null || true
+        fi
+        
+        # Create desktop shortcut
+        desktop_file="$HOME/Desktop/logparser.desktop"
+        if [[ -d "$HOME/Desktop" ]]; then
+            log "Creating desktop shortcut..."
+            cp "$apps_dir/logparser.desktop" "$desktop_file"
+            chmod +x "$desktop_file" 2>/dev/null || true
+            success "Desktop shortcut created"
+        fi
+        
+        success "Desktop integration complete"
+        
+        echo ""
+        echo "🎉 Installation completed! LogParser is ready to use."
+        echo ""
+        
+        # Install dependencies
+        log "Installing dependencies..."
+        if sudo apt-get update && sudo apt-get install -y libfuse2 libegl1-mesa libxcb-cursor0 libgtk-3-0 libnotify4 libxcb-xinerama0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri; then
+            success "Dependencies installed successfully!"
+        else
+            warning "Some dependencies failed to install"
+            echo "Manual install: $(get_dependency_command "$SYSTEM_TYPE")"
+        fi
         log "Run: logparser"
     fi
     ;;
@@ -375,11 +378,13 @@ case "$SYSTEM_TYPE" in
     
     chmod +x "$FILE"
     
-    # Try to install dependencies with graceful fallback
-    log "Installing system dependencies..."
-    if ! install_deps "$SYSTEM_TYPE"; then
-        warning "Could not install all dependencies automatically"
-        warning "LogParser will be installed but may not work correctly"
+    # Install dependencies
+    log "Installing dependencies..."
+    if install_deps "$SYSTEM_TYPE"; then
+        success "Dependencies installed successfully!"
+    else
+        warning "Some dependencies failed to install"
+        echo "Manual install: $(get_dependency_command "$SYSTEM_TYPE")"
     fi
     
     # Install AppImage
@@ -414,14 +419,39 @@ case "$SYSTEM_TYPE" in
       echo "Icon=logparser"
       echo "Terminal=false"
       echo "Categories=Utility;"
+      echo "StartupNotify=true"
+      echo "NoDisplay=false"
     } > "$apps_dir/logparser.desktop"
     
-    # Download icon from GitHub releases
-    log "Downloading icon..."
-    if curl -fsSL -o "$icons_dir/logparser.png" "$BASE_URL/icon.png" 2>/dev/null; then
-        success "Icon downloaded successfully"
+    # Extract original icon from AppImage
+    log "Extracting original icon from AppImage..."
+    if command -v convert >/dev/null 2>&1; then
+        # Try to extract icon from AppImage using ImageMagick
+        if convert "$INSTALL_DIR/logparser" -resize 256x256 "$icons_dir/logparser.png" 2>/dev/null; then
+            success "Original icon extracted successfully"
+        else
+            # Fallback: try to extract from AppImage using different method
+            log "Trying alternative icon extraction..."
+            if convert "$INSTALL_DIR/logparser[0]" -resize 256x256 "$icons_dir/logparser.png" 2>/dev/null; then
+                success "Original icon extracted successfully"
+            else
+                log "Could not extract icon, using AppImage as icon"
+                # Use AppImage itself as icon (some systems support this)
+                cp "$INSTALL_DIR/logparser" "$icons_dir/logparser.png" 2>/dev/null || true
+            fi
+        fi
+    elif command -v magick >/dev/null 2>&1; then
+        # Try to extract icon using newer ImageMagick
+        if magick "$INSTALL_DIR/logparser" -resize 256x256 "$icons_dir/logparser.png" 2>/dev/null; then
+            success "Original icon extracted successfully"
+        else
+            log "Could not extract icon, using AppImage as icon"
+            cp "$INSTALL_DIR/logparser" "$icons_dir/logparser.png" 2>/dev/null || true
+        fi
     else
-        log "Icon not available, skipping icon installation"
+        # No ImageMagick available, use AppImage as icon
+        log "ImageMagick not available, using AppImage as icon"
+        cp "$INSTALL_DIR/logparser" "$icons_dir/logparser.png" 2>/dev/null || true
     fi
     
     # Update desktop database
@@ -429,8 +459,30 @@ case "$SYSTEM_TYPE" in
         update-desktop-database "$apps_dir" 2>/dev/null || true
     fi
     
+    # Create desktop shortcut
+    desktop_file="$HOME/Desktop/logparser.desktop"
+    if [[ -d "$HOME/Desktop" ]]; then
+        log "Creating desktop shortcut..."
+        cp "$apps_dir/logparser.desktop" "$desktop_file"
+        chmod +x "$desktop_file" 2>/dev/null || true
+        success "Desktop shortcut created"
+    fi
+    
     success "Desktop integration complete"
-    ask_install_deps "$SYSTEM_TYPE"
+    
+    echo ""
+    echo "🎉 Installation completed! LogParser is ready to use."
+    echo ""
+    
+    # Install dependencies
+    log "Installing dependencies..."
+    if install_deps "$SYSTEM_TYPE"; then
+        success "Dependencies installed successfully!"
+    else
+        warning "Some dependencies failed to install"
+        echo "Manual install: $(get_dependency_command "$SYSTEM_TYPE")"
+    fi
+    
     log "Run: logparser"
     ;;
 esac

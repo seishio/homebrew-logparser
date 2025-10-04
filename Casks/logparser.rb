@@ -1,7 +1,7 @@
 cask "logparser" do
   version "0.4.30"
-  sha256 arm:   "d0b195a8172b18c229ca3fc210b594b88d287321a7943db0cf525439db1d7132",
-         intel: "f03d42ee971dac046addfcf4a19ec4007650c554be61f23139a6ff0e6ef57732"
+  sha256 arm:   "7099295246db872dc83763f4476815214b29bbd2eccb6fb70f8eb8860b87b60e",
+         intel: "12f68d5e3c793f221967dda281bfaf87d28488389f757daf945d352c31adfffc"
 
   url "https://github.com/seishio/homebrew-logparser/releases/download/v#{version}/LogParser-#{version}-macos-#{Hardware::CPU.arm? ? "arm64" : "intel"}.dmg"
   name "LogParser"
