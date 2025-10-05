@@ -4,14 +4,23 @@
 set -euo pipefail
 
 # Script version
-SCRIPT_VERSION="0.0.7"
+SCRIPT_VERSION="0.0.8"
 
-# Colors
+# Colors with fallback for terminals without color support
+if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1 && [[ $(tput colors) -ge 8 ]]; then
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 BLUE='\033[0;34m'
 YELLOW='\033[1;33m'
 NC='\033[0m'
+else
+    # Fallback for terminals without color support
+    RED=''
+    GREEN=''
+    BLUE=''
+    YELLOW=''
+    NC=''
+fi
 
 # Simple logging
 log() { echo -e "${BLUE}==>${NC} $1"; }
@@ -64,8 +73,17 @@ check_tools() {
 check_sudo() {
     if ! sudo -n true 2>/dev/null; then
         log "sudo access required for package installation"
-        if ! sudo -v; then
-            error "sudo access denied"
+        # Check if running in non-interactive mode
+        if [[ -t 0 ]]; then
+            # Interactive mode - can ask for password
+            if ! sudo -v; then
+                error "sudo access denied"
+                exit 1
+            fi
+        else
+            # Non-interactive mode - cannot ask for password
+            error "sudo access required but running in non-interactive mode"
+            error "Please run with sudo or ensure passwordless sudo is configured"
             exit 1
         fi
     fi
@@ -84,29 +102,25 @@ show_progress() {
     local file="$1"
     local url="$2"
     
-    local download_success=false
-    if timeout 300s curl -L -o "$file" "$url" 2>&1 | while IFS= read -r line; do
-        if [[ "$line" =~ ([0-9]+)% ]]; then
-            local percent="${BASH_REMATCH[1]}"
-            local filled=$((percent / 5))
-            local empty=$((20 - filled))
-            printf "\r["
-            printf "%*s" $filled | tr ' ' '='
-            printf "%*s" $empty | tr ' ' '-'
-            printf "] %s%%" "$percent"
-        fi
-    done; then
-        download_success=true
+    # Check if file already exists and is not empty
+    if [[ -f "$file" ]] && [[ -s "$file" ]]; then
+        log "File $file already exists, skipping download"
+        return 0
     fi
     
-    # Always show completion bar if download was successful
-    if [[ "$download_success" == "true" ]] && [[ -f "$file" ]] && [[ -s "$file" ]]; then
-        printf "\r[====================] 100%%\n"
-        echo ""
-        success "Download completed successfully"
+    echo "Downloading $file..."
+    
+    # Завантаження з прогресом
+    if curl --progress-bar -L -o "$file" "$url"; then
+        # Перевірити чи файл створився і не порожній
+        if [[ -f "$file" ]] && [[ -s "$file" ]]; then
+            success "Download completed successfully"
+        else
+            error "Downloaded file is empty or corrupted"
+            exit 1
+        fi
     else
-        echo ""
-        error "Download failed"
+        error "Failed to download $file"
         exit 1
     fi
 }
@@ -115,11 +129,11 @@ show_progress() {
 detect_system() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
         if command -v apt-get >/dev/null 2>&1; then
-                    echo "debian"
+            echo "debian"
         elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-                echo "rpm"
+            echo "rpm"
         elif command -v pacman >/dev/null 2>&1; then
-                echo "arch"
+            echo "arch"
         elif command -v apk >/dev/null 2>&1; then
             echo "alpine"
         elif command -v zypper >/dev/null 2>&1; then
@@ -241,6 +255,18 @@ install_appimage() {
     local version="$1"
     local file="LogParser-${version}-linux.AppImage"
     
+    # Check architecture compatibility
+    if [[ "$ARCHITECTURE" != "x86_64" ]] && [[ "$ARCHITECTURE" != "amd64" ]]; then
+        warning "AppImage may not work on $ARCHITECTURE architecture"
+        warning "Consider using a different installation method"
+    fi
+    
+    # Check FUSE availability for AppImage
+    if ! command -v fusermount >/dev/null 2>&1 && ! command -v fusermount3 >/dev/null 2>&1; then
+        warning "FUSE may be required for AppImage to work properly"
+        warning "Install FUSE: sudo apt install fuse (Ubuntu/Debian) or equivalent for your system"
+    fi
+    
     log "Downloading AppImage..."
     show_progress "$file" "$BASE_URL/$file"
     
@@ -281,9 +307,9 @@ install_deb() {
     log "Installing package..."
     check_sudo
     # Try apt install first, then dpkg as fallback
-    if ! timeout 600s sudo apt install -y "./$file" 2>/dev/null; then
+    if ! sudo apt install -y "./$file" 2>/dev/null; then
         log "Trying alternative installation method..."
-        if ! timeout 600s sudo dpkg -i "$file" 2>/dev/null; then
+        if ! sudo dpkg -i "$file" 2>/dev/null; then
             warning "Package installation had issues, but continuing..."
         else
             success "Package installed successfully"
