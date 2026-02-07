@@ -71,19 +71,18 @@ check_tools() {
 
 # Check sudo availability
 check_sudo() {
+    # If already running as root, no need to use sudo
+    if [[ $EUID -eq 0 ]]; then
+        return 0
+    fi
+
     if ! sudo -n true 2>/dev/null; then
         log "sudo access required for package installation"
-        # Check if running in non-interactive mode
-        if [[ -t 0 ]]; then
-            # Interactive mode - can ask for password
-            if ! sudo -v; then
-                error "sudo access denied"
-                exit 1
-            fi
-        else
-            # Non-interactive mode - cannot ask for password
-            error "sudo access required but running in non-interactive mode"
-            error "Please run with sudo or ensure passwordless sudo is configured"
+        # Try to refresh sudo credentials. 
+        # Even when piped, sudo can usually prompt for a password from the TTY.
+        if ! sudo -v; then
+            error "sudo access denied or could not be obtained"
+            error "Please run with sudo or ensure your user has sudo privileges"
             exit 1
         fi
     fi
