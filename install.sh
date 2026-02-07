@@ -4,15 +4,15 @@
 set -euo pipefail
 
 # Script version
-SCRIPT_VERSION="0.0.8"
+SCRIPT_VERSION="0.1.0"
 
 # Colors with fallback for terminals without color support
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1 && [[ $(tput colors) -ge 8 ]]; then
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-BLUE='\033[0;34m'
-YELLOW='\033[1;33m'
-NC='\033[0m'
+    RED='\033[0;31m'
+    GREEN='\033[0;32m'
+    BLUE='\033[0;34m'
+    YELLOW='\033[1;33m'
+    NC='\033[0m'
 else
     # Fallback for terminals without color support
     RED=''
@@ -110,9 +110,9 @@ show_progress() {
     
     echo "Downloading $file..."
     
-    # Завантаження з прогресом
+    # Download with progress
     if curl --progress-bar -L -o "$file" "$url"; then
-        # Перевірити чи файл створився і не порожній
+        # Verify file exists and is not empty
         if [[ -f "$file" ]] && [[ -s "$file" ]]; then
             success "Download completed successfully"
         else
@@ -128,42 +128,50 @@ show_progress() {
 # Detect system type
 detect_system() {
     if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if command -v apt-get >/dev/null 2>&1; then
-            echo "debian"
-        elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-            echo "rpm"
-        elif command -v pacman >/dev/null 2>&1; then
-            echo "arch"
-        elif command -v apk >/dev/null 2>&1; then
-            echo "alpine"
-        elif command -v zypper >/dev/null 2>&1; then
-            echo "suse"
-        else
-            # Fallback: try to detect by distribution files
-            if [[ -f /etc/os-release ]]; then
-                local distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
-                case "$distro" in
-                    "opensuse"|"opensuse-tumbleweed"|"opensuse-leap")
-                        echo "suse"
-                        ;;
-                    "ubuntu"|"debian"|"linuxmint")
+        if [[ -f /etc/os-release ]]; then
+            local distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+            local id_like=$(grep "^ID_LIKE=" /etc/os-release | cut -d= -f2 | tr -d '"')
+            
+            case "$distro" in
+                "debian"|"ubuntu"|"linuxmint"|"pop"|"elementary"|"kali")
+                    echo "debian"
+                    ;;
+                "fedora"|"rhel"|"centos"|"almalinux"|"rocky")
+                    echo "rpm"
+                    ;;
+                "opensuse"|"opensuse-tumbleweed"|"opensuse-leap"|"sles")
+                    echo "suse"
+                    ;;
+                "arch"|"manjaro"|"endeavouros")
+                    echo "arch"
+                    ;;
+                *)
+                    # Check ID_LIKE for derivatives
+                    if [[ "$id_like" == *"debian"* || "$id_like" == *"ubuntu"* ]]; then
                         echo "debian"
-                        ;;
-                    "fedora"|"rhel"|"centos")
+                    elif [[ "$id_like" == *"fedora"* || "$id_like" == *"rhel"* || "$id_like" == *"centos"* ]]; then
                         echo "rpm"
-                        ;;
-                    "arch"|"manjaro")
+                    elif [[ "$id_like" == *"arch"* ]]; then
                         echo "arch"
-                        ;;
-                    "alpine")
-                        echo "alpine"
-                        ;;
-                    *)
-                        echo "generic"
-                        ;;
-                esac
+                    elif [[ "$id_like" == *"suse"* ]]; then
+                        echo "suse"
+                    else
+                        echo "unsupported"
+                    fi
+                    ;;
+            esac
         else
-            echo "generic"
+            # Fallback to package manager detection
+            if command -v apt-get >/dev/null 2>&1; then
+                echo "debian"
+            elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+                echo "rpm"
+            elif command -v pacman >/dev/null 2>&1; then
+                echo "arch"
+            elif command -v zypper >/dev/null 2>&1; then
+                echo "suse"
+            else
+                echo "unsupported"
             fi
         fi
     else
@@ -172,165 +180,84 @@ detect_system() {
     fi
 }
 
-# Create desktop file with icon extraction
-create_desktop_file() {
-    local apps_dir="$HOME/.local/share/applications"
-    local exec_path="$1"
-    local icon_path="logparser"
-    
-    mkdir -p "$apps_dir"
-    
-    # Try to extract icon from AppImage (if it's AppImage)
-    # Check if it's an AppImage by testing --appimage-extract
-    if [[ -x "$exec_path" ]] && "$exec_path" --appimage-extract --help >/dev/null 2>&1; then
-        local temp_dir=$(mktemp -d)
-        cd "$temp_dir"
-        if "$exec_path" --appimage-extract >/dev/null 2>&1; then
-            # Look for icons
-            for icon in squashfs-root/*.png squashfs-root/*.ico squashfs-root/*.svg; do
-                if [[ -f "$icon" ]]; then
-                    local icon_name=$(basename "$icon")
-                    mkdir -p "$HOME/.local/share/icons"
-                    cp "$icon" "$HOME/.local/share/icons/$icon_name"
-                    icon_path="$HOME/.local/share/icons/$icon_name"
-                    break
-                fi
-            done
-        fi
-        cd - >/dev/null
-        rm -rf "$temp_dir"
-    fi
-    
-    cat > "$apps_dir/logparser.desktop" << EOF
-[Desktop Entry]
-Name=LogParser
-Comment=Log file analyzer
-Exec=$exec_path
-Icon=$icon_path
-Terminal=false
-Type=Application
-Categories=Utility;
-EOF
-    chmod +x "$apps_dir/logparser.desktop"
-        
-        # Update desktop database
-        if command -v update-desktop-database >/dev/null 2>&1; then
-            update-desktop-database "$apps_dir" 2>/dev/null || true
-        fi
-        
-        success "Desktop integration complete"
-}
-
-# Create desktop shortcut (simple)
-create_desktop_shortcut() {
-    local exec_path="$1"
-    
-    # Find desktop directory
-    local desktop_dir=""
-    if [[ -d "${HOME}/Desktop" ]]; then
-        desktop_dir="${HOME}/Desktop"
-    elif [[ -d "${HOME}/Рабочий стол" ]]; then
-        desktop_dir="${HOME}/Рабочий стол"
-    elif [[ -d "${HOME}/Escritorio" ]]; then
-        desktop_dir="${HOME}/Escritorio"
-    else
-        # Create Desktop as fallback
-        desktop_dir="${HOME}/Desktop"
-        mkdir -p "$desktop_dir"
-    fi
-    
-    # Copy .desktop file to desktop
-    if [[ -f "$HOME/.local/share/applications/logparser.desktop" ]]; then
-        if cp "$HOME/.local/share/applications/logparser.desktop" "$desktop_dir/LogParser.desktop"; then
-            chmod +x "$desktop_dir/LogParser.desktop" 2>/dev/null || true
-            success "Desktop shortcut created: $desktop_dir"
-        else
-            warning "Failed to create desktop shortcut"
-        fi
-    fi
-}
-
-# Install AppImage
-install_appimage() {
-    local version="$1"
-    local file="LogParser-${version}-linux.AppImage"
-    
-    # Check architecture compatibility
-    if [[ "$ARCHITECTURE" != "x86_64" ]] && [[ "$ARCHITECTURE" != "amd64" ]]; then
-        warning "AppImage may not work on $ARCHITECTURE architecture"
-        warning "Consider using a different installation method"
-    fi
-    
-    # Check FUSE availability for AppImage
-    if ! command -v fusermount >/dev/null 2>&1 && ! command -v fusermount3 >/dev/null 2>&1; then
-        warning "FUSE may be required for AppImage to work properly"
-        warning "Install FUSE: sudo apt install fuse (Ubuntu/Debian) or equivalent for your system"
-    fi
-    
-    log "Downloading AppImage..."
-    show_progress "$file" "$BASE_URL/$file"
-    
-    chmod +x "$file"
-    
-    # Install to user directory
-    log "Installing AppImage..."
-    local install_dir="$HOME/.local/bin"
-    mkdir -p "$install_dir"
-    mv "$file" "$install_dir/logparser"
-    chmod +x "$install_dir/logparser"
-    
-    success "LogParser installed to $install_dir/logparser"
-    
-    # Create desktop file
-    create_desktop_file "$install_dir/logparser"
-    
-    # Create desktop shortcut (simple)
-    create_desktop_shortcut "$install_dir/logparser"
-    
-    # Check PATH
-    if [[ ":$PATH:" != *":$install_dir:"* ]]; then
-        log "Add to PATH: export PATH=\"\$HOME/.local/bin:\$PATH\""
-    fi
-    
-    success "LogParser installed successfully!"
-    log "Run: logparser"
-}
-
 # Install DEB package
 install_deb() {
     local version="$1"
-    local file="LogParser-${version}-amd64.deb"
+    local arch="$2"
+    local file="LogParser-${version}-${arch}.deb"
     
     log "Downloading DEB package..."
     show_progress "$file" "$BASE_URL/$file"
     
     log "Installing package..."
     check_sudo
-    # Try apt install first, then dpkg as fallback
-    if ! sudo apt install -y "./$file" 2>/dev/null; then
-        log "Trying alternative installation method..."
-        if ! sudo dpkg -i "$file" 2>/dev/null; then
-            warning "Package installation had issues, but continuing..."
-        else
-            success "Package installed successfully"
+    # Try apt install first (handles dependencies better), then dpkg as fallback
+    if command -v apt-get >/dev/null 2>&1; then
+        if ! sudo apt-get install -y "./$file"; then
+            error "Installation failed"
+            exit 1
         fi
     else
-        success "Package installed successfully"
+        if ! sudo dpkg -i "$file"; then
+            warning "dpkg failed, trying to fix dependencies..."
+            sudo apt-get install -f -y || { error "Failed to fix dependencies"; exit 1; }
+        fi
     fi
     
-    # Create desktop file
-    create_desktop_file "logparser"
+    success "LogParser installed successfully!"
+}
+
+# Install RPM package
+install_rpm() {
+    local version="$1"
+    # RPM usually uses x86_64
+    local arch="x86_64" 
+    local file="LogParser-${version}-${arch}.rpm"
     
-    # Create desktop shortcut (simple)
-    create_desktop_shortcut "logparser"
+    log "Downloading RPM package..."
+    show_progress "$file" "$BASE_URL/$file"
+    
+    log "Installing package..."
+    check_sudo
+    
+    if command -v dnf >/dev/null 2>&1; then
+        sudo dnf install -y "./$file"
+    elif command -v zypper >/dev/null 2>&1; then
+        sudo zypper install -y --allow-unsigned-rpm "./$file"
+    elif command -v yum >/dev/null 2>&1; then
+        sudo yum install -y "./$file"
+    else
+        # Fallback to direct rpm install
+        sudo rpm -Uvh "./$file"
+    fi
     
     success "LogParser installed successfully!"
-    log "Run: logparser"
+}
+
+# Install Arch package
+install_arch() {
+    local version="$1"
+    local arch="x86_64"
+    local file="LogParser-${version}-${arch}.pkg.tar.zst"
+    
+    log "Downloading Arch package..."
+    show_progress "$file" "$BASE_URL/$file"
+    
+    log "Installing package..."
+    check_sudo
+    
+    if ! sudo pacman -U --noconfirm "$file"; then
+        error "Installation failed"
+        exit 1
+    fi
+    
+    success "LogParser installed successfully!"
 }
 
 # Main execution
 check_network
 check_tools
+
 log "Install script v$SCRIPT_VERSION"
 log "Installing LogParser v$VERSION"
 
@@ -344,46 +271,38 @@ BASE_URL="https://github.com/seishio/homebrew-logparser/releases/download/v$VERS
 SYSTEM_TYPE=$(detect_system)
 ARCHITECTURE=$(uname -m)
 
+# Map architecture names if needed
+case "$ARCHITECTURE" in
+    "x86_64"|"amd64")
+        DEB_ARCH="amd64"
+        RPM_ARCH="x86_64"
+        ARCH_ARCH="x86_64"
+        ;;
+    *)
+        error "Unsupported architecture: $ARCHITECTURE"
+        exit 1
+        ;;
+esac
+
+log "Detected system: $SYSTEM_TYPE ($ARCHITECTURE)"
+
 # Install based on system type
 case "$SYSTEM_TYPE" in
     "debian")
-        # Use DEB for amd64, AppImage for others
-        if [[ "$ARCHITECTURE" == "x86_64" || "$ARCHITECTURE" == "amd64" ]]; then
-            install_deb "$VERSION"
-        else
-            install_appimage "$VERSION"
-        fi
+        install_deb "$VERSION" "$DEB_ARCH"
         ;;
-    *)
-        # All other systems - use AppImage
-        install_appimage "$VERSION"
-    ;;
-esac
-
-success "Installation completed!"
-
-# Show dependency installation commands for manual setup
-echo ""
-log "Optional: Install system dependencies for optimal performance"
-echo ""
-case "$SYSTEM_TYPE" in
-    "debian")
-        echo "  sudo apt-get install -y libgtk-3-0 libnotify4 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libx11-6 libxext6 libxrender1 libgl1-mesa-dri"
-        ;;
-    "rpm")
-        echo "  sudo dnf install -y gtk3 libnotify mesa-libEGL libxcb libX11 libXext libXrender mesa-libGL fuse"
+    "rpm"|"suse")
+        install_rpm "$VERSION"
         ;;
     "arch")
-        echo "  sudo pacman -S --noconfirm gtk3 libnotify mesa libxcb libx11 libxext libxrender fuse2"
-        ;;
-    "alpine")
-        echo "  sudo apk add --no-cache gtk+3.0 libnotify mesa-egl libxcb libx11 libxext libxrender mesa-gl fuse"
-        ;;
-    "suse")
-        echo "  sudo zypper install -y gtk3 libnotify Mesa-libEGL libxcb libX11 libXext libXrender Mesa-libGL fuse"
+        install_arch "$VERSION"
         ;;
     *)
-        echo "  sudo apt-get install -y libfuse2 libegl1-mesa libxcb-xinerama0 libxcb-cursor0 libgtk-3-0 libnotify4 libx11-6 libxext6 libxrender1 libgl1-mesa-dri"
+        error "Unsupported Linux distribution. Please install manually using released packages."
+        error "Visit: https://github.com/seishio/homebrew-logparser/releases"
+        exit 1
         ;;
 esac
+
 echo ""
+log "Run 'logparser' to start the application."

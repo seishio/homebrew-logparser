@@ -1,8 +1,9 @@
 # LogParser Homebrew Tap
 
-[![Version](https://img.shields.io/badge/Version-0.4.30-brightgreen.svg)](https://github.com/seishio/homebrew-logparser/releases)
+[![Version](https://img.shields.io/github/v/release/seishio/homebrew-logparser?label=version&color=brightgreen)](https://github.com/seishio/homebrew-logparser/releases)
+[![License](https://img.shields.io/badge/license-MIT-blue)](#license)
 
-This tap provides the LogParser application via Homebrew Cask.
+This tap provides the LogParser application via Homebrew Cask for macOS and a native installer for Linux.
 
 ## About LogParser
 
@@ -20,37 +21,34 @@ brew tap seishio/logparser
 brew install --cask logparser
 ```
 
-### Linux (DEB, AppImage)
+### Linux (DEB, RPM, Arch)
+**Requirements:** `curl`, `sudo`
 
-**Install:**
+**Install (auto-detect distribution):**
 ```bash
 curl -fsSL https://raw.githubusercontent.com/seishio/homebrew-logparser/main/install.sh | bash
 ```
+*The script automatically detects your distribution (Debian/Ubuntu, Fedora/RHEL, Arch, openSUSE) and installs the appropriate package.*
 
-## Updating & Reinstalling
+---
+
+<details>
+<summary><b>🔄 Updating & Reinstalling</b></summary>
 
 ### Update
 ```bash
 # macOS
 brew upgrade --cask logparser
 
-# Linux (same as installation)
+# Linux
+# Run the install script again to update to the latest version
 curl -fsSL https://raw.githubusercontent.com/seishio/homebrew-logparser/main/install.sh | bash
 ```
 
-### Force Reinstall
-```bash
-# Force reinstall
-brew reinstall --cask logparser
-```
-
-### Reinstall
+### Reinstall (macOS)
 ```bash
 # Standard reinstall
-brew cleanup && brew uninstall --cask logparser
-brew untap seishio/logparser
-brew tap seishio/logparser
-brew install --cask logparser
+brew reinstall --cask logparser
 
 # Complete reinstall (with data cleanup)
 brew cleanup && brew uninstall --cask logparser
@@ -60,9 +58,9 @@ brew tap seishio/logparser
 brew install --cask logparser
 ```
 
-### Complete Reset
+### Complete Reset (macOS)
 ```bash
-# Nuclear option - reset everything
+# Nuclear option - reset everything including Homebrew
 brew uninstall --cask logparser
 rm -rf ~/Library/Application\ Support/LogParser ~/Library/Preferences/com.logparser.*
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
@@ -70,24 +68,57 @@ rm -rf ~/Library/Application\ Support/LogParser ~/Library/Preferences/com.logpar
 brew tap seishio/logparser
 brew install --cask logparser
 ```
+</details>
 
-### Troubleshooting
+<details>
+<summary><b>🗑️ Uninstalling</b></summary>
 
-#### SHA-256 Mismatch Error
+### macOS
 ```bash
-# Clean cache and reinstall tap
+brew uninstall --cask logparser
+```
+
+### Linux
+Use your package manager to remove LogParser:
+
+**Debian/Ubuntu:**
+```bash
+sudo apt-get remove logparser
+```
+
+**Fedora/RHEL/CentOS:**
+```bash
+sudo dnf remove logparser
+```
+
+**Arch Linux:**
+```bash
+sudo pacman -R logparser
+```
+
+**openSUSE:**
+```bash
+sudo zypper remove logparser
+```
+</details>
+
+<details>
+<summary><b>🛠️ Troubleshooting</b></summary>
+
+#### SHA-256 Mismatch Error (macOS)
+If you get a checksum mismatch error, clean your Homebrew cache and retry:
+```bash
 brew cleanup --prune=all
 brew untap seishio/logparser
 brew tap seishio/logparser
 brew install --cask logparser
 ```
+</details>
 
 ## License
 
 ### Homebrew Tap
-
 This Homebrew tap is provided under the MIT License.
 
 ### LogParser Application
-
 **Non-Commercial License** - This software is provided for personal use only. Commercial use, modification, and redistribution are strictly prohibited without explicit written permission.
