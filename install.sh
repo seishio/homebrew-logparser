@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_VERSION="0.1.1"
+SCRIPT_VERSION="0.1.2"
 
 # Colors (with fallback for terminals without color support)
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1 && [[ $(tput colors) -ge 8 ]]; then
@@ -132,56 +132,40 @@ verify_checksum() {
 }
 
 detect_system() {
-    if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-        if [[ -f /etc/os-release ]]; then
-            local distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
-            local id_like=$(grep "^ID_LIKE=" /etc/os-release | cut -d= -f2 | tr -d '"')
+    # Primary detection via /etc/os-release
+    if [[ "$OSTYPE" == "linux"* ]] && [[ -f /etc/os-release ]]; then
+        local distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+        local id_like=$(grep "^ID_LIKE=" /etc/os-release | cut -d= -f2 | tr -d '"')
 
-            case "$distro" in
-                "debian"|"ubuntu"|"linuxmint"|"pop"|"elementary"|"kali")
-                    echo "debian"
-                    ;;
-                "fedora"|"rhel"|"centos"|"almalinux"|"rocky")
-                    echo "rpm"
-                    ;;
-                "opensuse"|"opensuse-tumbleweed"|"opensuse-leap"|"sles")
-                    echo "suse"
-                    ;;
-                "arch"|"manjaro"|"endeavouros")
-                    echo "arch"
-                    ;;
-                *)
-                    # Check ID_LIKE for derivatives
-                    if [[ "$id_like" == *"debian"* || "$id_like" == *"ubuntu"* ]]; then
-                        echo "debian"
-                    elif [[ "$id_like" == *"fedora"* || "$id_like" == *"rhel"* || "$id_like" == *"centos"* ]]; then
-                        echo "rpm"
-                    elif [[ "$id_like" == *"arch"* ]]; then
-                        echo "arch"
-                    elif [[ "$id_like" == *"suse"* ]]; then
-                        echo "suse"
-                    else
-                        echo "unsupported"
-                    fi
-                    ;;
-            esac
-        else
-            # Fallback: detect by available package manager
-            if command -v apt-get >/dev/null 2>&1; then
-                echo "debian"
-            elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
-                echo "rpm"
-            elif command -v pacman >/dev/null 2>&1; then
-                echo "arch"
-            elif command -v zypper >/dev/null 2>&1; then
-                echo "suse"
-            else
-                echo "unsupported"
-            fi
+        case "$distro" in
+            "debian"|"ubuntu"|"linuxmint"|"pop"|"elementary"|"kali") echo "debian"; return 0 ;;
+            "fedora"|"rhel"|"centos"|"almalinux"|"rocky") echo "rpm"; return 0 ;;
+            "opensuse"|"opensuse-tumbleweed"|"opensuse-leap"|"sles") echo "suse"; return 0 ;;
+            "arch"|"manjaro"|"endeavouros") echo "arch"; return 0 ;;
+        esac
+
+        if [[ "$id_like" == *"debian"* || "$id_like" == *"ubuntu"* ]]; then
+            echo "debian"; return 0
+        elif [[ "$id_like" == *"fedora"* || "$id_like" == *"rhel"* || "$id_like" == *"centos"* ]]; then
+            echo "rpm"; return 0
+        elif [[ "$id_like" == *"arch"* ]]; then
+            echo "arch"; return 0
+        elif [[ "$id_like" == *"suse"* ]]; then
+            echo "suse"; return 0
         fi
+    fi
+
+    # Fallback/Additional: Detection by available package manager
+    if command -v apt-get >/dev/null 2>&1 || command -v apt >/dev/null 2>&1; then
+        echo "debian"
+    elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
+        echo "rpm"
+    elif command -v pacman >/dev/null 2>&1; then
+        echo "arch"
+    elif command -v zypper >/dev/null 2>&1; then
+        echo "suse"
     else
-        error "Unsupported operating system: $OSTYPE"
-        exit 1
+        echo "unsupported"
     fi
 }
 
