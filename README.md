@@ -34,7 +34,7 @@ Download the latest `.exe` from the [Releases](https://github.com/seishio/homebr
 
 **macOS:**
 ```bash
-brew upgrade --cask logparser
+brew update && brew upgrade --cask logparser
 ```
 
 **Linux:**

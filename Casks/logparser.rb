@@ -6,7 +6,7 @@ cask "logparser" do
   url "https://github.com/seishio/homebrew-logparser/releases/download/v#{version}/LogParser-#{version}-macos-#{Hardware::CPU.arm? ? "arm64" : "intel"}.dmg"
   name "LogParser"
   desc "LogParser is a fast log file analyzer supporting multiple formats."
-  homepage "https://github.com/seishio/homebrew-logparser"
+  homepage "https://github.com/seishio/LogParser"
   
   depends_on macos: ">= :catalina"
   
@@ -28,10 +28,8 @@ cask "logparser" do
   end
 
   zap trash: [
-    "~/Library/Preferences/com.logparser.*",
+    "~/Library/Preferences/LogParser",
     "~/Library/Application Support/LogParser",
-    "~/Library/Caches/dev.logparser",
-    "~/Library/Logs/LogParser",
-    "~/Library/Saved Application State/dev.logparser.savedState",
+    "~/Library/Saved Application State/dev.logparser.app.savedState",
   ]
 end

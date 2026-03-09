@@ -74,9 +74,22 @@ if [[ ! "$VERSION" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
+run_privileged() {
+    if [[ $EUID -eq 0 ]]; then
+        "$@"
+    else
+        sudo "$@"
+    fi
+}
+
 check_sudo() {
     if [[ $EUID -eq 0 ]]; then
         return 0
+    fi
+
+    if ! command -v sudo >/dev/null 2>&1; then
+        error "sudo is not installed. Run the script as root."
+        exit 1
     fi
 
     if ! sudo -n true 2>/dev/null; then
@@ -127,7 +140,8 @@ verify_checksum() {
     if sha256sum --check "$checksum_file" >/dev/null 2>&1; then
         success "Checksum verified"
     else
-        warning "Checksum mismatch for $file"
+        error "Checksum mismatch for $file — aborting installation"
+        exit 1
     fi
 }
 
@@ -174,19 +188,19 @@ install_deb() {
     local arch="$2"
     local file="LogParser-${version}-${arch}.deb"
 
+    check_sudo
     log "Downloading DEB package..."
     show_progress "$file" "$BASE_URL/$file"
     verify_checksum "$file"
 
     log "Installing package..."
-    check_sudo
     if command -v apt-get >/dev/null 2>&1; then
-        if ! sudo apt-get install -y "./$file"; then
+        if ! run_privileged apt-get install -y "./$file"; then
             error "Installation failed"
             exit 1
         fi
     else
-        if ! sudo dpkg -i "$file"; then
+        if ! run_privileged dpkg -i "$file"; then
             error "Installation failed. Install dependencies manually and retry."
             exit 1
         fi
@@ -200,30 +214,30 @@ install_rpm() {
     local arch="$2"
     local file="LogParser-${version}-${arch}.rpm"
 
+    check_sudo
     log "Downloading RPM package..."
     show_progress "$file" "$BASE_URL/$file"
     verify_checksum "$file"
 
     log "Installing package..."
-    check_sudo
 
     if command -v dnf >/dev/null 2>&1; then
-        if ! sudo dnf install -y "./$file"; then
+        if ! run_privileged dnf install -y "./$file"; then
             error "Installation failed"
             exit 1
         fi
     elif command -v zypper >/dev/null 2>&1; then
-        if ! sudo zypper install -y --allow-unsigned-rpm "./$file"; then
+        if ! run_privileged zypper install -y --allow-unsigned-rpm "./$file"; then
             error "Installation failed"
             exit 1
         fi
     elif command -v yum >/dev/null 2>&1; then
-        if ! sudo yum install -y "./$file"; then
+        if ! run_privileged yum install -y "./$file"; then
             error "Installation failed"
             exit 1
         fi
     else
-        if ! sudo rpm -Uvh "./$file"; then
+        if ! run_privileged rpm -Uvh "./$file"; then
             error "Installation failed"
             exit 1
         fi
@@ -237,14 +251,14 @@ install_arch() {
     local arch="$2"
     local file="LogParser-${version}-${arch}.pkg.tar.zst"
 
+    check_sudo
     log "Downloading Arch package..."
     show_progress "$file" "$BASE_URL/$file"
     verify_checksum "$file"
 
     log "Installing package..."
-    check_sudo
 
-    if ! sudo pacman -U --noconfirm "$file"; then
+    if ! run_privileged pacman -U --noconfirm "$file"; then
         error "Installation failed"
         exit 1
     fi
