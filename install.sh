@@ -1,7 +1,7 @@
 #!/bin/bash
 set -euo pipefail
 
-SCRIPT_VERSION="0.1.2"
+SCRIPT_VERSION="0.2.0"
 
 # Colors (with fallback for terminals without color support)
 if [[ -t 1 ]] && command -v tput >/dev/null 2>&1 && tput colors >/dev/null 2>&1 && [[ $(tput colors) -ge 8 ]]; then
@@ -124,20 +124,28 @@ show_progress() {
 
 verify_checksum() {
     local file="$1"
-    local checksum_url="$BASE_URL/${file}.sha256"
-    local checksum_file="${file}.sha256"
-
-    if ! curl --fail -sL -o "$checksum_file" "$checksum_url" 2>/dev/null || [[ ! -s "$checksum_file" ]]; then
-        warning "Checksum file not available, skipping verification"
-        return 0
-    fi
 
     if ! command -v sha256sum >/dev/null 2>&1; then
         warning "sha256sum not found, skipping verification"
         return 0
     fi
 
-    if sha256sum --check "$checksum_file" >/dev/null 2>&1; then
+    # GitHub attaches a sha256 digest to every release asset — no separate .sha256 files needed
+    local api_url="https://api.github.com/repos/seishio/homebrew-logparser/releases/tags/v$VERSION"
+    local expected
+    expected=$(timeout 10s curl -s "$api_url" 2>/dev/null \
+        | awk -v f="$file" '$0 ~ "\"name\": \"" f "\"" {found=1} found && /"digest"/ {print; exit}' \
+        | sed -n 's/.*sha256:\([0-9a-f]\{64\}\).*/\1/p')
+
+    if [[ -z "$expected" ]]; then
+        warning "Checksum not available from GitHub API, skipping verification"
+        return 0
+    fi
+
+    local actual
+    actual=$(sha256sum "$file" | awk '{print $1}')
+
+    if [[ "$actual" == "$expected" ]]; then
         success "Checksum verified"
     else
         error "Checksum mismatch for $file — aborting installation"
@@ -148,22 +156,20 @@ verify_checksum() {
 detect_system() {
     # Primary detection via /etc/os-release
     if [[ "$OSTYPE" == "linux"* ]] && [[ -f /etc/os-release ]]; then
-        local distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
-        local id_like=$(grep "^ID_LIKE=" /etc/os-release | cut -d= -f2 | tr -d '"')
+        local distro id_like
+        distro=$(grep "^ID=" /etc/os-release | cut -d= -f2 | tr -d '"')
+        id_like=$(grep "^ID_LIKE=" /etc/os-release | cut -d= -f2 | tr -d '"')
 
         case "$distro" in
             "debian"|"ubuntu"|"linuxmint"|"pop"|"elementary"|"kali") echo "debian"; return 0 ;;
             "fedora"|"rhel"|"centos"|"almalinux"|"rocky") echo "rpm"; return 0 ;;
             "opensuse"|"opensuse-tumbleweed"|"opensuse-leap"|"sles") echo "suse"; return 0 ;;
-            "arch"|"manjaro"|"endeavouros") echo "arch"; return 0 ;;
         esac
 
         if [[ "$id_like" == *"debian"* || "$id_like" == *"ubuntu"* ]]; then
             echo "debian"; return 0
         elif [[ "$id_like" == *"fedora"* || "$id_like" == *"rhel"* || "$id_like" == *"centos"* ]]; then
             echo "rpm"; return 0
-        elif [[ "$id_like" == *"arch"* ]]; then
-            echo "arch"; return 0
         elif [[ "$id_like" == *"suse"* ]]; then
             echo "suse"; return 0
         fi
@@ -174,8 +180,6 @@ detect_system() {
         echo "debian"
     elif command -v dnf >/dev/null 2>&1 || command -v yum >/dev/null 2>&1; then
         echo "rpm"
-    elif command -v pacman >/dev/null 2>&1; then
-        echo "arch"
     elif command -v zypper >/dev/null 2>&1; then
         echo "suse"
     else
@@ -246,26 +250,6 @@ install_rpm() {
     success "LogParser installed successfully!"
 }
 
-install_arch() {
-    local version="$1"
-    local arch="$2"
-    local file="LogParser-${version}-${arch}.pkg.tar.zst"
-
-    check_sudo
-    log "Downloading Arch package..."
-    show_progress "$file" "$BASE_URL/$file"
-    verify_checksum "$file"
-
-    log "Installing package..."
-
-    if ! run_privileged pacman -U --noconfirm "$file"; then
-        error "Installation failed"
-        exit 1
-    fi
-
-    success "LogParser installed successfully!"
-}
-
 cleanup() { rm -rf "$TEMP_DIR"; }
 
 # --- Main ---
@@ -286,7 +270,6 @@ case "$ARCHITECTURE" in
     "x86_64"|"amd64")
         DEB_ARCH="amd64"
         RPM_ARCH="x86_64"
-        ARCH_ARCH="x86_64"
         ;;
     *)
         error "Unsupported architecture: $ARCHITECTURE"
@@ -302,9 +285,6 @@ case "$SYSTEM_TYPE" in
         ;;
     "rpm"|"suse")
         install_rpm "$VERSION" "$RPM_ARCH"
-        ;;
-    "arch")
-        install_arch "$VERSION" "$ARCH_ARCH"
         ;;
     *)
         error "Unsupported Linux distribution. Please install manually using released packages."

@@ -1,24 +1,19 @@
 cask "logparser" do
-  version "0.4.35"
-  sha256 arm:   "cc65cf115746f4c52b048879c803c63bca82c4b1ef06791d04f1d442dfba9d00",
-         intel: "726f10e2fd41109d351ab26cef72f9f17945e2633d8e9f7d3576519276715ad7"
+  version "0.4.36"
+  sha256 "dc340fb8f94f43165b39d2ac21b0abf7f5c609e0ef88a3d44c5439570febf355"
 
-  url "https://github.com/seishio/homebrew-logparser/releases/download/v#{version}/LogParser-#{version}-macos-#{Hardware::CPU.arm? ? "arm64" : "intel"}.dmg"
+  url "https://github.com/seishio/homebrew-logparser/releases/download/v#{version}/LogParser-#{version}-macos-arm64.dmg"
   name "LogParser"
-  desc "LogParser is a fast log file analyzer supporting multiple formats."
-  homepage "https://github.com/seishio/LogParser"
-  
-  depends_on macos: ">= :catalina"
-  
-  conflicts_with cask: [
-    "logparser-beta",
-    "logparser-dev",
-  ]
+  desc "Fast log file analyzer supporting multiple formats"
+  homepage "https://github.com/seishio/homebrew-logparser"
 
   livecheck do
     url "https://github.com/seishio/homebrew-logparser/releases/latest"
     regex(%r{href=.*?/tag/v?(\d+(?:\.\d+)+)["' >]}i)
   end
+
+  depends_on arch: :arm64
+  depends_on macos: :big_sur
 
   app "LogParser.app"
 
@@ -28,8 +23,8 @@ cask "logparser" do
   end
 
   zap trash: [
-    "~/Library/Preferences/LogParser",
     "~/Library/Application Support/LogParser",
+    "~/Library/Preferences/LogParser",
     "~/Library/Saved Application State/dev.logparser.app.savedState",
   ]
 end
