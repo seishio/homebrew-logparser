@@ -1,6 +1,6 @@
 cask "logparser" do
-  version "0.4.36"
-  sha256 "dc340fb8f94f43165b39d2ac21b0abf7f5c609e0ef88a3d44c5439570febf355"
+  version "0.4.37"
+  sha256 "e7d4d38c59ec54bdfb446609da39ee03039c83452c06bb7e5be7adba4ea4dd60"
 
   url "https://github.com/seishio/homebrew-logparser/releases/download/v#{version}/LogParser-#{version}-macos-arm64.dmg"
   name "LogParser"
